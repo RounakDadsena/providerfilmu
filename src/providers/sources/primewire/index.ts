@@ -79,9 +79,9 @@ async function getStreams(title: string) {
 
 export const primewireScraper = makeSourcerer({
   id: 'primewire',
-  name: 'Amazonprime',
+  name: 'Primewire',
   rank: 10,
-  disabled: false,
+  disabled: true,
   flags: [flags.CORS_ALLOWED],
   async scrapeMovie(ctx) {
     if (!ctx.media.imdbId) throw new Error('No imdbId provided');
