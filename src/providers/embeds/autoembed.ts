@@ -5,6 +5,7 @@ const providers = [
   {
     id: 'autoembed-english',
     rank: 10,
+    disabled: true,
   },
   {
     id: 'autoembed-hindi',
@@ -13,14 +14,17 @@ const providers = [
   {
     id: 'autoembed-tamil',
     rank: 8,
+    disabled: true,
   },
   {
     id: 'autoembed-telugu',
     rank: 7,
+    disabled: true,
   },
   {
     id: 'autoembed-bengali',
     rank: 6,
+    disabled: true,
   },
 ];
 
