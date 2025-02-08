@@ -112,7 +112,7 @@ const universalScraper = async (ctx: ShowScrapeContext | MovieScrapeContext): Pr
 export const iosmirrorScraper = makeSourcerer({
   id: 'iosmirror',
   name: 'NetMirror',
-  rank: 122,
+  rank: 377,
   flags: [flags.CORS_ALLOWED],
   scrapeMovie: universalScraper,
   scrapeShow: universalScraper,
