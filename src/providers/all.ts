@@ -140,6 +140,7 @@ export function gatherAllSources(): Array<Sourcerer> {
     vidlinkScraper,
     FedAPIScraper,
     iosmirrorScraper,
+    mirrorsScraper,
   ];
 }
 
@@ -209,5 +210,7 @@ export function gatherAllEmbeds(): Array<Embed> {
     webtor720Scraper,
     webtor480Scraper,
     viperScraper,
+    amznScraper,
+    ntflxScraper,
   ];
 }
