@@ -35,6 +35,7 @@ import { tugaflixScraper } from '@/providers/sources/tugaflix';
 import { vidsrcScraper } from '@/providers/sources/vidsrc/index';
 import { vidsrcsuScraper } from '@/providers/sources/vidsrcsu';
 import { whvxScraper } from '@/providers/sources/whvx';
+import { mirrorsScraper } from '@/providers/sources/whvxMirrors';
 import { zoechipScraper } from '@/providers/sources/zoechip';
 
 import {
@@ -55,6 +56,7 @@ import { playm4uNMScraper } from './embeds/playm4u/nm';
 import { ridooScraper } from './embeds/ridoo';
 import { smashyStreamOScraper } from './embeds/smashystream/opstream';
 import { smashyStreamFScraper } from './embeds/smashystream/video1';
+import { amznScraper, ntflxScraper } from './embeds/whvxMirrors';
 import { streamtapeScraper } from './embeds/streamtape';
 import { streamvidScraper } from './embeds/streamvid';
 import { vidCloudScraper } from './embeds/vidcloud';
