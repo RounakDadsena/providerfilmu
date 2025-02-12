@@ -44,7 +44,7 @@ async function comboScraper(ctx: ShowScrapeContext | MovieScrapeContext): Promis
 export const mirrorsScraper = makeSourcerer({
   id: 'whvxMirrors',
   name: 'WHVX Mirrors',
-  rank: 499,
+  rank: 550,
   flags: [flags.CORS_ALLOWED],
   disabled: false,
   scrapeMovie: comboScraper,
