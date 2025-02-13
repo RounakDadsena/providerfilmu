@@ -8,7 +8,7 @@ import { NotFoundError } from '@/utils/errors';
 // thanks @TPN for this
 
 const baseUrl = 'https://iosmirror.cc';
-const baseUrl2 = 'https://vercelhlsproxy-nn5c.vercel.app/iosmirror.cc:443';
+const baseUrl2 = 'https://filmunet.vercel.app/iosmirror.cc:443';
 
 type metaT = {
   year: string;
@@ -93,7 +93,7 @@ const universalScraper = async (ctx: ShowScrapeContext | MovieScrapeContext): Pr
 
   if (!playlistRes[0].sources[0].file) throw new Error('Failed to fetch playlist'); // todo: make a find func to get the one with lable auto
 
-  const playlist = `https://vercelhlsproxy-nn5c.vercel.app/m3u8-proxy?url=${encodeURIComponent(`${baseUrl}${playlistRes[0].sources[0].file}`)}&headers=${encodeURIComponent(JSON.stringify({ referer: baseUrl }))}`;
+  const playlist = `https://filmunet.vercel.app/m3u8-proxy?url=${encodeURIComponent(`${baseUrl}${playlistRes[0].sources[0].file}`)}&headers=${encodeURIComponent(JSON.stringify({ referer: baseUrl }))}`;
 
   return {
     embeds: [],
