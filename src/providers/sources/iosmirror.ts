@@ -1,119 +1,159 @@
-import { flags } from '@/entrypoint/utils/targets';
-import { SourcererOutput, makeSourcerer } from '@/providers/base';
-import { compareTitle } from '@/utils/compare';
-import { MovieScrapeContext, ShowScrapeContext } from '@/utils/context';
+import { EmbedOutput, makeEmbed } from '@/providers/base';
 import { makeCookieHeader } from '@/utils/cookie';
 import { NotFoundError } from '@/utils/errors';
+import { compareTitle } from '@/utils/compare';
 
-// thanks @TPN for this
-
-const baseUrl = 'https://iosmirror.cc';
-const baseUrl2 = 'https://filmunet.vercel.app/iosmirror.cc:443';
-
+// Common types for both scrapers
 type metaT = {
   year: string;
   type: 'm' | 't';
   season: { s: string; id: string; ep: string }[];
 };
 
-type searchT = { status: 'y' | 'n'; searchResult?: { id: string; t: string }[]; error: string };
+type searchT = { status?: 'y' | 'n'; searchResult?: { id: string; t: string; y?: string }[]; error: string };
 
 type episodeT = { episodes: { id: string; s: string; ep: string }[]; nextPageShow: number };
 
-const universalScraper = async (ctx: ShowScrapeContext | MovieScrapeContext): Promise<SourcererOutput> => {
-  const hash = decodeURIComponent(await ctx.proxiedFetcher('https://netmirror-temp.tpn.workers.dev/'));
+const providers = [
+  {
+    id: 'netmirror',
+    rank: 300,
+    baseUrl: 'https://iosmirror.cc',
+    baseUrl2: 'https://filmueproxy.vercel.app/iosmirror.cc:443',
+    statusCheck: (res: searchT) => res.status === 'y'
+  },
+  {
+    id: 'primemirror',
+    rank: 290,
+    baseUrl: 'https://iosmirror.cc',
+    baseUrl2: 'https://filmueproxy.vercel.app/iosmirror.cc:443/pv',
+    statusCheck: () => true
+  },
+];
 
-  const searchRes = await ctx.proxiedFetcher<searchT>('/search.php', {
-    baseUrl: baseUrl2,
-    query: { s: ctx.media.title },
-    headers: { cookie: makeCookieHeader({ t_hash_t: hash }) },
+function embed(provider: { id: string; rank: number; baseUrl: string; baseUrl2: string; statusCheck: (res: searchT) => boolean }) {
+  return makeEmbed({
+    id: provider.id,
+    name: provider.id.toUpperCase(),
+    rank: provider.rank,
+    disabled: false,
+    async scrape(ctx) {
+      let progress = 10;
+      const interval = setInterval(() => {
+        if (progress < 90) {
+          progress += 5;
+          ctx.progress(progress);
+        }
+      }, 100);
+
+      try {
+        const query = JSON.parse(ctx.url);
+        const hash = decodeURIComponent(await ctx.fetcher('https://filmuworker.entertainmentfilmu.workers.dev/'))
+        if (!hash) throw new NotFoundError('No hash found');
+
+        const searchRes = await ctx.fetcher<searchT>('/search.php', {
+          baseUrl: provider.baseUrl2,
+          query: { s: query.title },
+          headers: { cookie: makeCookieHeader({ t_hash_t: hash, hd: 'on' }) },
+        });
+
+        if (!provider.statusCheck(searchRes) || !searchRes.searchResult) {
+          throw new NotFoundError(searchRes.error || 'No search results found');
+        }
+
+        async function getMeta(id: string) {
+          return ctx.fetcher<metaT>('/post.php', {
+            baseUrl: provider.baseUrl2,
+            query: { id },
+            headers: { cookie: makeCookieHeader({ t_hash_t: hash, hd: 'on' }) },
+          });
+        }
+
+        // Find matching content
+        let id = searchRes.searchResult.find(async (x) => {
+          const metaRes = await getMeta(x.id);
+          return (
+            compareTitle(x.t, query.title) &&
+            ((x.y ? Number(x.y) : Number(metaRes.year)) === Number(query.releaseYear) || 
+             metaRes.type === (query.type === 'movie' ? 'm' : 't'))
+          );
+        })?.id;
+
+        if (!id) throw new NotFoundError('No watchable item found');
+
+        // Handle shows
+        if (query.type === 'show') {
+          const metaRes = await getMeta(id);
+          
+          const seasonId = metaRes?.season.find((x) => Number(x.s) === Number(query.season))?.id;
+          if (!seasonId) throw new NotFoundError('Season not available');
+
+          const episodeRes = await ctx.fetcher<episodeT>('/episodes.php', {
+            baseUrl: provider.baseUrl2,
+            query: { s: seasonId, series: id },
+            headers: { cookie: makeCookieHeader({ t_hash_t: hash, hd: 'on' }) },
+          });
+
+          let episodes = [...episodeRes.episodes];
+          let currentPage = 2;
+          while (episodeRes.nextPageShow === 1) {
+            const nextPageRes = await ctx.fetcher<episodeT>('/episodes.php', {
+              baseUrl: provider.baseUrl2,
+              query: { s: seasonId, series: id, page: currentPage.toString() },
+              headers: { cookie: makeCookieHeader({ t_hash_t: hash, hd: 'on' }) },
+            });
+
+            episodes = [...episodes, ...nextPageRes.episodes];
+            episodeRes.nextPageShow = nextPageRes.nextPageShow;
+            currentPage++;
+          }
+
+          const episodeId = episodes.find(
+            (x) => x.ep === `E${query.episode}` && x.s === `S${query.season}`,
+          )?.id;
+          if (!episodeId) throw new NotFoundError('Episode not available');
+
+          id = episodeId;
+        }
+
+        // Get playlist
+        const playlistRes: { sources: { file: string; label: string }[] }[] = await ctx.fetcher('/playlist.php?', {
+          baseUrl: provider.baseUrl2,
+          query: { id },
+          headers: { cookie: makeCookieHeader({ t_hash_t: hash, hd: 'on' }) },
+        });
+
+        let autoFile = playlistRes[0].sources.find((source) => source.label === 'Auto')?.file;
+        if (!autoFile) {
+          autoFile = playlistRes[0].sources.find((source) => source.label === 'Full HD')?.file;
+        }
+        if (!autoFile) {
+          autoFile = playlistRes[0].sources[0].file;
+        }
+
+        if (!autoFile) throw new Error('Failed to fetch playlist');
+
+        const playlist = `https://filmueproxy.vercel.app/m3u8-proxy?url=${encodeURIComponent(`${provider.baseUrl}${autoFile}`)}&headers=${encodeURIComponent(JSON.stringify({ referer: provider.baseUrl, cookie: makeCookieHeader({ hd: 'on' }) }))}`;
+        
+        clearInterval(interval);
+        ctx.progress(100);
+
+        return {
+          stream: {
+            id: 'primary',
+            playlist,
+            type: 'hls',
+            flags: [flags.CORS_ALLOWED],
+            captions: [],
+          }
+        } as EmbedOutput;
+      } catch (error) {
+        clearInterval(interval);
+        ctx.progress(100);
+        throw new NotFoundError('Failed to search');
+      }
+    },
   });
-  if (searchRes.status !== 'y' || !searchRes.searchResult) throw new NotFoundError(searchRes.error);
+}
 
-  async function getMeta(id: string) {
-    return ctx.proxiedFetcher<metaT>('/post.php', {
-      baseUrl: baseUrl2,
-      query: { id },
-      headers: { cookie: makeCookieHeader({ t_hash_t: hash }) },
-    });
-  }
-
-  let metaRes: metaT | undefined;
-
-  // todo: use promise.alp
-  let id = searchRes.searchResult.find(async (x) => {
-    metaRes = await getMeta(x.id);
-    return (
-      compareTitle(x.t, ctx.media.title) &&
-      (Number(metaRes.year) === ctx.media.releaseYear || metaRes.type === (ctx.media.type === 'movie' ? 'm' : 't'))
-    );
-  })?.id;
-  if (!id) throw new NotFoundError('No watchable item found');
-
-  if (ctx.media.type === 'show') {
-    metaRes = await getMeta(id); // shouldnt need this, idunno why it doesnt work without this
-    const showMedia = ctx.media;
-
-    const seasonId = metaRes?.season.find((x) => Number(x.s) === showMedia.season.number)?.id;
-    if (!seasonId) throw new NotFoundError('Season not available');
-
-    const episodeRes = await ctx.proxiedFetcher<episodeT>('/episodes.php', {
-      baseUrl: baseUrl2,
-      query: { s: seasonId, series: id },
-      headers: { cookie: makeCookieHeader({ t_hash_t: hash }) },
-    });
-
-    let episodes = [...episodeRes.episodes];
-    let currentPage = 2;
-    while (episodeRes.nextPageShow === 1) {
-      const nextPageRes = await ctx.proxiedFetcher<episodeT>('/episodes.php', {
-        baseUrl: baseUrl2,
-        query: { s: seasonId, series: id, page: currentPage.toString() },
-        headers: { cookie: makeCookieHeader({ t_hash_t: hash }) },
-      });
-
-      episodes = [...episodes, ...nextPageRes.episodes];
-      episodeRes.nextPageShow = nextPageRes.nextPageShow;
-      currentPage++;
-    }
-
-    const episodeId = episodes.find(
-      (x) => x.ep === `E${showMedia.episode.number}` && x.s === `S${showMedia.season.number}`,
-    )?.id;
-    if (!episodeId) throw new NotFoundError('Episode not available');
-
-    id = episodeId;
-  }
-
-  const playlistRes: { sources: { file: string }[] }[] = await ctx.proxiedFetcher('/playlist.php?', {
-    baseUrl: baseUrl2,
-    query: { id },
-    headers: { cookie: makeCookieHeader({ t_hash_t: hash }) },
-  });
-
-  if (!playlistRes[0].sources[0].file) throw new Error('Failed to fetch playlist'); // todo: make a find func to get the one with lable auto
-
-  const playlist = `https://filmunet.vercel.app/m3u8-proxy?url=${encodeURIComponent(`${baseUrl}${playlistRes[0].sources[0].file}`)}&headers=${encodeURIComponent(JSON.stringify({ referer: baseUrl }))}`;
-
-  return {
-    embeds: [],
-    stream: [
-      {
-        id: 'primary',
-        playlist,
-        type: 'hls',
-        flags: [flags.CORS_ALLOWED],
-        captions: [],
-      },
-    ],
-  };
-};
-
-export const iosmirrorScraper = makeSourcerer({
-  id: 'iosmirror',
-  name: 'NetMirror',
-  rank: 377,
-  flags: [flags.CORS_ALLOWED],
-  scrapeMovie: universalScraper,
-  scrapeShow: universalScraper,
-});
+export const [netmirrorScraper, primemirrorScraper] = providers.map(embed);
